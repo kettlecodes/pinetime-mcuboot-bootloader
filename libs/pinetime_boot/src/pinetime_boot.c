@@ -59,36 +59,42 @@ void pinetime_boot_init(void) {
     hal_gpio_write(PUSH_BUTTON_OUT, 1);  //  Enable the button
     //  blink_backlight(1, 1);
 
-    //  Display the image.
-    pinetime_boot_display_image();
-
-    // Display version image
-    pinetime_version_image();
+    //  Display the logo.
+    kc_init_screen();
+    pinetime_clear_screen();
+    kc_draw_kettle();
 
     //  Wait 5 seconds for button press.
+    uint8_t revertIconDrawn = 0;
+    uint8_t rescueIconDrawn = 0;
     uint32_t button_samples = 0;
     console_printf("Waiting 5 seconds for button...\n");  console_flush();
     for (int i = 0; i < 64 * 5; i++) {
-        for (int delay = 0; delay < 3000; delay++) {
-            button_samples += hal_gpio_read(PUSH_BUTTON_IN);
-        }
-        if(i % 64 == 0) {
-          console_printf("step %d - %d\n", (i / (64)) + 1, (int)button_samples); console_flush();
-          hal_watchdog_tickle();
-        }
+      for (int delay = 0; delay < 3000; delay++) {
+          button_samples += hal_gpio_read(PUSH_BUTTON_IN);
+      }
+      if (i % 64 == 0) {
+        console_printf("step %d - %d\n", (i / (64)) + 1, (int)button_samples); console_flush();
+        hal_watchdog_tickle();
+      }
 
-        if(i % 8 == 0) {
-          uint16_t color = RED;
-          if (button_samples < 3000 * 64 * 2) {
-            color = GREEN;
-          } else if (button_samples < 3000 * 64 * 4) {
-            color = BLUE;
+      if (i % 8 == 0) {
+        if (button_samples >= (3000 * 64 * 2)) {
+          if (button_samples < 3000 * 64 * 4) {
+            if (revertIconDrawn == 0) {
+              kc_draw_revert();
+              revertIconDrawn = 1;
+            }
           } else {
-            color = RED;
+            if (rescueIconDrawn == 0) {
+              kc_draw_rescue();
+              rescueIconDrawn = 1;
+            }
           }
-
-          pinetime_boot_display_image_colors(WHITE, color, 240 - ((i / 8) * 6) + 1);
         }
+
+        kc_draw_progress(i >> 3);
+      }
     }
     console_printf("Waited 5 seconds (%d)\n", (int)button_samples);  console_flush();
 

@@ -35,21 +35,23 @@ extern "C" {  //  Expose the types and functions below to C functions.
 /// Init the display and render the boot graphic. Called by sysinit() during startup, defined in pkg.yml.
 void pinetime_boot_init(void);
 
-/// Write a converted graphic file to SPI Flash
-int pinetime_boot_write_image(void);
-
-/// Display the boot logo to ST7789 display controller
-int pinetime_boot_display_image(void);
-
-/// Display the boot logo to ST7789 display controller using 2 colors. The first x lines (x = colorLine)
-/// will be drawn in color1, the rest in color2.
-int pinetime_boot_display_image_colors(uint16_t color1, uint16_t color2, uint8_t colorLine);
-
-/// Display the bootloader version to ST7789 display controller
-int pinetime_version_image(void);
-
 /// Clear the display
 void pinetime_clear_screen(void);
+
+/// Init the screen
+void kc_init_screen(void);
+
+/// Display the kettle image
+void kc_draw_kettle(void);
+
+/// Display the revert icon
+void kc_draw_revert(void);
+
+/// Display the rescue icon
+void kc_draw_rescue(void);
+
+/// Display the progress bar
+void kc_draw_progress(int step);
 
 /// Check whether the watch button is pressed
 void pinetime_boot_check_button(void);

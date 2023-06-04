@@ -107,47 +107,122 @@ static int transmit_spi(const uint8_t *data, uint16_t len);
 /// Buffer for reading flash and writing to display
 static uint8_t flash_buffer[COL_COUNT * BYTES_PER_PIXEL];
 
-/// Display the image described by info to the ST7789 display controller using 2 colors. The first x lines (x = colorLine)
-/// will be drawn in color1, the rest in color2.
-int pinetime_display_image_colors(struct imgInfo* info, int posX, int posY, uint16_t color1, uint16_t color2, uint8_t colorLine) {
+/// Display the RLE image described by info to the ST7789 display controller.
+int kc_draw_image(struct imgInfo* info) {
   int rc;
-  int y = 0;
-  uint16_t bufferIndex = 0;
-  uint8_t isBackground = 1;
-  const uint16_t backgroundColor = BLACK;
-  uint16_t trueColor = backgroundColor;
 
-  for (int i = 0; i < info->dataSize; i++) {
-    uint8_t runLength = info->data[i];
-    while (runLength) {
-      flash_buffer[bufferIndex] = trueColor >> 8;
-      flash_buffer[bufferIndex + 1] = trueColor & 0xff;
-      bufferIndex += BYTES_PER_PIXEL;
-      runLength -= 1;
+  int colorBits = 1;
+  while ((1 << colorBits) < info->colorCount) {
+    colorBits++;
+  }
+  int colorMask = (1 << colorBits) - 1;
 
-      if (bufferIndex >= (info->width * BYTES_PER_PIXEL)) {
-        rc = set_window(posX, y + posY, posX + info->width - 1, y + posY); assert(rc == 0);
+  int right = info->left + info->width - 1;
+  int bottom = info->top + info->height - 1;
 
-        //  Write Pixels (RAMWR): st7735_lcd::draw() → set_pixel()
+  int x = info->left;
+  int y = info->top;
+  int dataIndex = 0;
+  int bufferIndex = 0;
+  while ((dataIndex < info->dataSize) && (y <= bottom)) {
+    int byte = info->data[dataIndex];
+    dataIndex++;
+    int color = info->colors[byte & colorMask];
+    int runLength = byte >> colorBits;
+    for (int i = 0; i < runLength; i++) {
+      flash_buffer[bufferIndex] = color >> 8;
+      flash_buffer[bufferIndex + 1] = color & 0xff;
+      bufferIndex += 2;
+      x++;
+      if (x > right) {
+        rc = set_window(info->left, y, right, y); assert(rc == 0);
         rc = write_command(RAMWR, NULL, 0); assert(rc == 0);
         rc = write_data(flash_buffer, info->width * BYTES_PER_PIXEL); assert(rc == 0);
         bufferIndex = 0;
-        y += 1;
+        x = info->left;
+        y++;
+        if (y > bottom) {
+          break;
+        }
       }
     }
-
-    if (isBackground) {
-      isBackground = 0;
-      trueColor = (y < colorLine) ? color1 : color2;
-    }
-    else {
-      isBackground = 1;
-      trueColor = backgroundColor;
-    }
-    if(y >= info->height)
-      break;
   }
   return 0;
+}
+
+void kc_draw_kettle() {
+  kc_draw_image(&kettleInfo);
+}
+
+void kc_draw_revert() {
+  kc_draw_image(&revertInfo);
+}
+
+void kc_draw_rescue() {
+  kc_draw_image(&rescueInfo);
+}
+
+void kc_draw_progress(int step) {
+  int left = 24;
+  int top = 206;
+  int right = left + 192 - 1;
+  int bottom = top + 4 - 1;
+  int progressX = left + step * 5;
+  for (int y = top; y <= bottom; y++) {
+    int bufferOffset = 0;
+    if ((y == top) || (y == bottom)) {
+      int color = (left > progressX) ? 0x18c3 : 0x630c;
+      flash_buffer[bufferOffset] = color >> 8;
+      flash_buffer[bufferOffset + 1] = color & 0xff;
+      bufferOffset += 2;
+      color = ((left + 1) > progressX) ? 0x39e7 : 0xd69a;
+      flash_buffer[bufferOffset] = color >> 8;
+      flash_buffer[bufferOffset + 1] = color & 0xff;
+      bufferOffset += 2;
+    } else {
+      int color = (left > progressX) ? 0x39e7 : 0xd69a;
+      flash_buffer[bufferOffset] = color >> 8;
+      flash_buffer[bufferOffset + 1] = color & 0xff;
+      bufferOffset += 2;
+      color = ((left + 1) > progressX) ? 0x528a : 0xffff;
+      flash_buffer[bufferOffset] = color >> 8;
+      flash_buffer[bufferOffset + 1] = color & 0xff;
+      bufferOffset += 2;
+    }
+    for (int x = left + 2; x <= (right - 2); x++) {
+      int color = (x > progressX) ? 0x528a : 0xffff;
+      flash_buffer[bufferOffset] = color >> 8;
+      flash_buffer[bufferOffset + 1] = color & 0xff;
+      bufferOffset += 2;
+    }
+    if ((y == top) || (y == bottom)) {
+      int color = ((right - 1) > progressX) ? 0x39e7 : 0xd69a;
+      flash_buffer[bufferOffset] = color >> 8;
+      flash_buffer[bufferOffset + 1] = color & 0xff;
+      bufferOffset += 2;
+      color = (right > progressX) ? 0x18c3 : 0x630c;
+      flash_buffer[bufferOffset] = color >> 8;
+      flash_buffer[bufferOffset + 1] = color & 0xff;
+      bufferOffset += 2;
+    } else {
+      int color = ((right - 1) > progressX) ? 0x528a : 0xffff;
+      flash_buffer[bufferOffset] = color >> 8;
+      flash_buffer[bufferOffset + 1] = color & 0xff;
+      bufferOffset += 2;
+      color = (right > progressX) ? 0x39e7 : 0xd69a;
+      flash_buffer[bufferOffset] = color >> 8;
+      flash_buffer[bufferOffset + 1] = color & 0xff;
+      bufferOffset += 2;
+    }
+    int rc = set_window(left, y, right, y); assert(rc == 0);
+    rc = write_command(RAMWR, NULL, 0); assert(rc == 0);
+    rc = write_data(flash_buffer, 192 * BYTES_PER_PIXEL); assert(rc == 0);
+  }
+}
+
+void kc_init_screen() {
+  int rc = init_display(); assert(rc == 0);
+  rc = set_orientation(Landscape); assert(rc == 0);
 }
 
 /// Clear the display
@@ -161,33 +236,6 @@ void pinetime_clear_screen(void) {
     rc = write_command(RAMWR, NULL, 0); assert(rc == 0);
     rc = write_data(flash_buffer, COL_COUNT * BYTES_PER_PIXEL); assert(rc == 0);
   }
-}
-
-/// Display the image described by info at position (posX, posY) using default color (black and white)
-int pinetime_display_image(struct imgInfo* info, int posX, int posY) {
-  return pinetime_display_image_colors(info, posX, posY, WHITE, WHITE, 0);
-}
-
-/// Display the boot logo to ST7789 display controller
-int pinetime_boot_display_image(void) {
-  console_printf("Displaying boot logo...\n");  console_flush();
-
-  int rc = init_display();  assert(rc == 0);
-  rc = set_orientation(Landscape);  assert(rc == 0);
-  pinetime_clear_screen();
-  return pinetime_display_image(&bootLogoInfo, 0, 0);
-}
-
-/// Display the boot logo to ST7789 display controller using 2 colors. The first x lines (x = colorLine)
-/// will be drawn in color1, the rest in color2.
-int pinetime_boot_display_image_colors(uint16_t color1, uint16_t color2, uint8_t colorLine) {
-  return pinetime_display_image_colors(&bootLogoInfo, 0, 0, color1, color2, colorLine);
-}
-
-/// Display the bootloader version to ST7789 display controller on the bottom of the display (centered)
-int pinetime_version_image(void) {
-  console_printf("Displaying version image...\n"); console_flush();
-  return pinetime_display_image(&versionInfo, (COL_COUNT/2) - (versionInfo.width/2), ROW_COUNT - (versionInfo.height));
 }
 
 /// Set the ST7789 display window to the coordinates (left, top), (right, bottom)
