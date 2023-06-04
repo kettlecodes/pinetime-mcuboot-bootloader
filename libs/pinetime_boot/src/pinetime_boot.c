@@ -44,6 +44,9 @@
 /// Address of the VTOR Register in the System Control Block.
 #define SCB_VTOR ((uint32_t *) 0xE000ED08)
 
+/// Number of button polling cycles (should result in 1/64 seconds)
+#define BTN_POLL_CYCLES 32000
+
 void blink_backlight(int pattern_id, int repetitions);  //  Defined in blink.c
 static void relocate_vector_table(void *vector_table, void *relocated_vector_table);
 
@@ -70,7 +73,7 @@ void pinetime_boot_init(void) {
     uint32_t button_samples = 0;
     console_printf("Waiting 5 seconds for button...\n");  console_flush();
     for (int i = 0; i < 64 * 5; i++) {
-      for (int delay = 0; delay < 3000; delay++) {
+      for (int delay = 0; delay < BTN_POLL_CYCLES; delay++) {
           button_samples += hal_gpio_read(PUSH_BUTTON_IN);
       }
       if (i % 64 == 0) {
@@ -79,8 +82,8 @@ void pinetime_boot_init(void) {
       }
 
       if (i % 8 == 0) {
-        if (button_samples >= (3000 * 64 * 2)) {
-          if (button_samples < 3000 * 64 * 4) {
+        if (button_samples >= (BTN_POLL_CYCLES * 64 * 2)) {
+          if (button_samples < BTN_POLL_CYCLES * 64 * 4) {
             if (revertIconDrawn == 0) {
               kc_draw_revert();
               revertIconDrawn = 1;
@@ -99,12 +102,12 @@ void pinetime_boot_init(void) {
     console_printf("Waited 5 seconds (%d)\n", (int)button_samples);  console_flush();
 
     //  Check whether button is pressed and held. Sample count must high enough to avoid accidental rollbacks.
-    if(button_samples > (3000 * 64 * 4)) {
+    if(button_samples > (BTN_POLL_CYCLES * 64 * 4)) {
       console_printf("Restoring factory firmware\n");  console_flush();
       restore_factory();
     }
 
-    if(button_samples > (3000 * 64 * 2)) {
+    if(button_samples > (BTN_POLL_CYCLES * 64 * 2)) {
         console_printf("Flashing secondary firmware into primary\n");  console_flush();
 
         //  Mark the previous firmware for rollback and blink slowly 4 times.
